@@ -1,6 +1,17 @@
-# ignore data directory
-data/** linguist-vendored
-# ignore shell scripts from language stats
-*.sh linguist-vendored
-# mark Rust as the primary language
+# Force Rust as primary language
 *.rs linguist-detectable=true
+*.rs linguist-language=Rust
+
+# Exclude everything else from stats
+*.sh linguist-detectable=false
+*.bash linguist-detectable=false
+*.zsh linguist-detectable=false
+Makefile linguist-detectable=false
+*.toml linguist-detectable=false
+*.yaml linguist-detectable=false
+*.yml linguist-detectable=false
+*.sql linguist-detectable=false
+*.json linguist-detectable=false
+*.md linguist-detectable=false
+data/** linguist-vendored=true
+target/** linguist-vendored=true

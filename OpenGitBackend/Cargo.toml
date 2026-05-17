@@ -7,7 +7,6 @@ edition = "2024"
 
 # Async runtime
 tokio            = { version = "1",    features = ["full"] }
-async-trait = "0.1.89"
 
 # HTTP server
 axum             = { version = "0.8",  features = ["multipart", "ws"] }
@@ -36,8 +35,8 @@ gix              = "0.83"
 git2             = "0.20"
 
 # SSH server
-russh            = "0.60"
-russh-keys       = "0.49"
+russh            = "0.44"
+russh-keys       = "0.44"
 
 # S3 / MinIO
 aws-sdk-s3       = "1"
@@ -74,6 +73,7 @@ uuid             = { version = "1",    features = ["v4", "serde"] }
 chrono           = { version = "0.4",  features = ["serde"] }
 reqwest          = { version = "0.12", features = ["json", "rustls-tls"] }
 dotenvy          = "0.15"
+async-trait = "0.1.89"
 
 [build-dependencies]
 tonic-build      = "0.14"
