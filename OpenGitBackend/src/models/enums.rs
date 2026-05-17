@@ -252,3 +252,13 @@ pub enum PagesStatus {
     Errored,
     Disabled,
 }
+
+impl std::fmt::Display for RepoVisibility {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RepoVisibility::Public   => write!(f, "public"),
+            RepoVisibility::Private  => write!(f, "private"),
+            RepoVisibility::Internal => write!(f, "internal"),
+        }
+    }
+}
