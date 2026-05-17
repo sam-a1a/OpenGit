@@ -24,6 +24,8 @@ pub struct User {
     pub is_verified:            bool,
     pub two_factor_enabled:     bool,
     pub profile_private:        bool,
+    #[serde(skip_serializing)]
+    pub password_hash:          Option<String>,
     pub created_at:             DateTime<Utc>,
     pub updated_at:             DateTime<Utc>,
 }

@@ -41,7 +41,10 @@ async fn main() -> Result<()> {
         .acquire_timeout(std::time::Duration::from_secs(5))
         .connect(&config.database_url)
         .await?;
-    info!("PostgreSQL connected");
+
+    info!("Running migrations...");
+    sqlx::migrate!("./migrations").run(&db).await?;
+    info!("Migrations complete");
 
     info!("Connecting to Valkey...");
     let redis_client = RedisClient::open(config.valkey_url.as_str())?;
@@ -49,12 +52,9 @@ async fn main() -> Result<()> {
     info!("Valkey connected");
 
     let state = AppState::new(db, cache, config.clone());
+    let app   = api::router::build(state);
 
-    let app = api::router::build(state);
-
-    let addr: SocketAddr = format!("{}:{}", config.server_host, config.server_port)
-        .parse()?;
-
+    let addr: SocketAddr = format!("{}:{}", config.server_host, config.server_port).parse()?;
     info!("Listening on {}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
