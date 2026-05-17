@@ -57,7 +57,7 @@ pub async fn update_me(
     auth_user:    AuthUser,
     Json(input):  Json<UpdateUserInput>,
 ) -> Result<impl IntoResponse, AppError> {
-    let user = sqlx::query_as(
+    let user: crate::models::user::User = sqlx::query_as(
         "UPDATE users SET
             display_name     = COALESCE($1, display_name),
             bio              = COALESCE($2, bio),
@@ -102,7 +102,7 @@ pub async fn update_status(
     auth_user:    AuthUser,
     Json(input):  Json<UpdateStatusInput>,
 ) -> Result<impl IntoResponse, AppError> {
-    let user = sqlx::query_as(
+    let user: crate::models::user::User = sqlx::query_as(
         "UPDATE users SET
             status_emoji        = $1,
             status_message      = $2,
