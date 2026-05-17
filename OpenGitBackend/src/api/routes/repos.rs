@@ -23,7 +23,7 @@ pub struct PaginationQuery {
     pub per_page: Option<i64>,
 }
 
-// ── Create repo
+// Create repo
 
 #[derive(Debug, Deserialize)]
 pub struct CreateRepoInput {
@@ -40,7 +40,7 @@ pub async fn create_repo(
     auth_user:    AuthUser,
     Json(input):  Json<CreateRepoInput>,
 ) -> Result<impl IntoResponse, AppError> {
-    if input.name.len() < 1 {
+    if input.name.is_empty() {
         return Err(AppError::BadRequest("Repository name is required".into()));
     }
     if !input.name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '.') {
@@ -73,10 +73,14 @@ pub async fn create_repo(
         .await
         .map_err(AppError::Database)?;
 
+    // initialize bare git repo on disk
+    let path = crate::git::repository::repo_path(&state.config.git_base_dir, &git_path);
+    crate::git::repository::init_bare(&path)?;
+
     Ok((StatusCode::CREATED, Json(repo)))
 }
 
-// ── Get repo
+// Get repo
 
 pub async fn get_repo(
     State(state):   State<AppState>,

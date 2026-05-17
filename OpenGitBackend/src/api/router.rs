@@ -1,3 +1,4 @@
+use crate::api::routes::git_http::{git_receive_pack, git_upload_pack, info_refs};
 use crate::{
     api::routes::{
         auth::{login_handler, logout_handler, me_handler, refresh_handler, register_handler},
@@ -76,6 +77,11 @@ pub fn build(state: AppState) -> Router {
         .route("/api/v1/repos/:owner/:repo/collaborators/:username", delete(remove_collaborator))
         .route("/api/v1/repos/:owner/:repo/branch-protections", get(list_branch_protections))
         .route("/api/v1/repos/:owner/:repo/branch-protections", post(create_branch_protection))
+
+        // git smart http
+        .route("/:owner/:repo/info/refs",         get(info_refs))
+        .route("/:owner/:repo/git-upload-pack",   post(git_upload_pack))
+        .route("/:owner/:repo/git-receive-pack",  post(git_receive_pack))
 
         .with_state(state)
 }
