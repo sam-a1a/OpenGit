@@ -13,6 +13,7 @@ pub struct Config {
     pub server_host:      String,
     pub server_port:      u16,
     pub git_base_dir:     String,
+    pub ssh_port: u16,
 }
 
 impl Config {
@@ -29,6 +30,7 @@ impl Config {
             server_host:      std::env::var("SERVER_HOST").unwrap_or_else(|_| "0.0.0.0".to_string()),
             server_port:      std::env::var("SERVER_PORT").unwrap_or_else(|_| "8080".to_string()).parse()?,
             git_base_dir:     std::env::var("GIT_BASE_DIR").unwrap_or_else(|_| "./data/repos".to_string()),
+            ssh_port: std::env::var("SSH_PORT").unwrap_or_else(|_| "2222".to_string()).parse()?,
         })
     }
 }

@@ -51,11 +51,20 @@ async fn main() -> Result<()> {
     let cache = redis::aio::ConnectionManager::new(redis_client).await?;
     info!("Valkey connected");
 
-    let state = AppState::new(db, cache, config.clone());
-    let app   = api::router::build(state);
+    let state     = AppState::new(db, cache, config.clone());
+    let app       = api::router::build(state.clone());
+    let ssh_port  = config.ssh_port;
+    let ssh_state = state.clone();
+
+    // spawn SSH server in background
+    tokio::spawn(async move {
+        if let Err(e) = git::ssh::server::start(ssh_state, ssh_port).await {
+            tracing::error!("SSH server error: {}", e);
+        }
+    });
 
     let addr: SocketAddr = format!("{}:{}", config.server_host, config.server_port).parse()?;
-    info!("Listening on {}", addr);
+    info!("HTTP listening on {}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app).await?;

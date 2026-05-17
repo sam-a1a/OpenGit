@@ -1,0 +1,6 @@
+# ignore data directory
+data/** linguist-vendored
+# ignore shell scripts from language stats
+*.sh linguist-vendored
+# mark Rust as the primary language
+*.rs linguist-detectable=true

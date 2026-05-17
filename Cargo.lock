@@ -10,6 +10,7 @@ dependencies = [
  "apalis",
  "apalis-redis",
  "argon2",
+ "async-trait",
  "aws-config",
  "aws-sdk-s3",
  "axum",
