@@ -2,5 +2,6 @@ pub mod auth;
 pub mod git_http;
 pub mod health;
 pub mod issues;
+pub mod pull_requests;
 pub mod repos;
 pub mod users;

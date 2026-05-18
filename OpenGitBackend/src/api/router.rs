@@ -24,6 +24,13 @@ use crate::{
             get_following, get_me, get_user, get_user_repos, list_ssh_keys,
             search_users, unblock_user, unfollow_user, update_me, update_status,
         },
+        pull_requests::{
+            add_pr_assignees, add_pr_labels, close_pr, create_pr, create_review,
+            create_review_comment, create_status, delete_review_comment, dismiss_review,
+            get_pr, is_merged, list_review_comments, list_reviews, list_prs, list_statuses,
+            merge_pr, remove_reviewers, reopen_pr, request_reviewers, resolve_review_comment,
+            update_pr, update_review_comment,
+        }
     },
     state::AppState,
 };
@@ -109,6 +116,30 @@ pub fn build(state: AppState) -> Router {
         .route("/api/v1/repos/{owner}/{repo}/comments/{comment_id}",                patch(update_comment))
         .route("/api/v1/repos/{owner}/{repo}/comments/{comment_id}",                delete(delete_comment))
         .route("/api/v1/repos/{owner}/{repo}/comments/{comment_id}/reactions",      post(add_comment_reaction))
+
+        // pull requests
+        .route("/api/v1/repos/{owner}/{repo}/pulls",                                    get(list_prs))
+        .route("/api/v1/repos/{owner}/{repo}/pulls",                                    post(create_pr))
+        .route("/api/v1/repos/{owner}/{repo}/pulls/{number}",                           get(get_pr))
+        .route("/api/v1/repos/{owner}/{repo}/pulls/{number}",                           patch(update_pr))
+        .route("/api/v1/repos/{owner}/{repo}/pulls/{number}/close",                     put(close_pr))
+        .route("/api/v1/repos/{owner}/{repo}/pulls/{number}/reopen",                    put(reopen_pr))
+        .route("/api/v1/repos/{owner}/{repo}/pulls/{number}/merge",                     put(merge_pr))
+        .route("/api/v1/repos/{owner}/{repo}/pulls/{number}/merged",                    get(is_merged))
+        .route("/api/v1/repos/{owner}/{repo}/pulls/{number}/reviews",                   get(list_reviews))
+        .route("/api/v1/repos/{owner}/{repo}/pulls/{number}/reviews",                   post(create_review))
+        .route("/api/v1/repos/{owner}/{repo}/pulls/{number}/reviews/{review_id}/dismissals", put(dismiss_review))
+        .route("/api/v1/repos/{owner}/{repo}/pulls/{number}/comments",                  get(list_review_comments))
+        .route("/api/v1/repos/{owner}/{repo}/pulls/{number}/comments",                  post(create_review_comment))
+        .route("/api/v1/repos/{owner}/{repo}/pulls/{number}/requested_reviewers",       post(request_reviewers))
+        .route("/api/v1/repos/{owner}/{repo}/pulls/{number}/requested_reviewers",       delete(remove_reviewers))
+        .route("/api/v1/repos/{owner}/{repo}/pulls/{number}/labels",                    post(add_pr_labels))
+        .route("/api/v1/repos/{owner}/{repo}/pulls/{number}/assignees",                 post(add_pr_assignees))
+        .route("/api/v1/repos/{owner}/{repo}/pulls/comments/{comment_id}",              patch(update_review_comment))
+        .route("/api/v1/repos/{owner}/{repo}/pulls/comments/{comment_id}",              delete(delete_review_comment))
+        .route("/api/v1/repos/{owner}/{repo}/pulls/comments/{comment_id}/resolve",      put(resolve_review_comment))
+        .route("/api/v1/repos/{owner}/{repo}/statuses/{sha}",                           get(list_statuses))
+        .route("/api/v1/repos/{owner}/{repo}/statuses/{sha}",                           post(create_status))
 
         // labels
         .route("/api/v1/repos/{owner}/{repo}/labels",                get(list_labels))
