@@ -2,3 +2,6 @@ target/
 *.lock
 .DS_Store
 .env
+OpenGitBackend/data/
+OpenGitBackend/.idea/
+.DS_Store
