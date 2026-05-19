@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod git_browser;
 pub mod git_http;
 pub mod health;
 pub mod issues;
