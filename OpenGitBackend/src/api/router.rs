@@ -49,6 +49,14 @@ use crate::{
             get_notification, get_repo_subscription, list_notifications,
             list_repo_notifications, mark_all_read, mark_read, mark_repo_read,
             save_notification, set_repo_subscription, unread_count, unsave_notification,
+        },
+        organizations::{
+            accept_invitation, add_team_member, add_team_repo, cancel_invitation,
+            create_invitation, create_org, create_team, decline_invitation, delete_org,
+            delete_team, get_member, get_org, get_team, list_invitations, list_members,
+            list_my_orgs, list_org_repos, list_team_members, list_team_repos, list_teams,
+            list_user_orgs, remove_member, remove_team_member, remove_team_repo,
+            update_member_role, update_org, update_team,
         }
     },
     state::AppState,
@@ -139,6 +147,41 @@ pub fn build(state: AppState) -> Router {
         .route("/api/v1/repos/{owner}/{repo}/subscription",                 get(get_repo_subscription))
         .route("/api/v1/repos/{owner}/{repo}/subscription",                 put(set_repo_subscription))
         .route("/api/v1/repos/{owner}/{repo}/subscription",                 delete(delete_repo_subscription))
+
+        // organizations
+        .route("/api/v1/user/orgs",                                                         get(list_my_orgs))
+        .route("/api/v1/orgs",                                                              post(create_org))
+        .route("/api/v1/orgs/{org}",                                                        get(get_org))
+        .route("/api/v1/orgs/{org}",                                                        patch(update_org))
+        .route("/api/v1/orgs/{org}",                                                        delete(delete_org))
+        .route("/api/v1/orgs/{org}/repos",                                                  get(list_org_repos))
+        .route("/api/v1/users/{username}/orgs",                                             get(list_user_orgs))
+
+        // org members
+        .route("/api/v1/orgs/{org}/members",                                                get(list_members))
+        .route("/api/v1/orgs/{org}/members/{username}",                                     get(get_member))
+        .route("/api/v1/orgs/{org}/members/{username}",                                     delete(remove_member))
+        .route("/api/v1/orgs/{org}/members/{username}/role",                                patch(update_member_role))
+
+        // invitations
+        .route("/api/v1/orgs/{org}/invitations",                                            get(list_invitations))
+        .route("/api/v1/orgs/{org}/invitations",                                            post(create_invitation))
+        .route("/api/v1/orgs/{org}/invitations/{invitation_id}",                            delete(cancel_invitation))
+        .route("/api/v1/invitations/{token}/accept",                                        post(accept_invitation))
+        .route("/api/v1/invitations/{token}/decline",                                       post(decline_invitation))
+
+        // teams
+        .route("/api/v1/orgs/{org}/teams",                                                  get(list_teams))
+        .route("/api/v1/orgs/{org}/teams",                                                  post(create_team))
+        .route("/api/v1/orgs/{org}/teams/{team_slug}",                                      get(get_team))
+        .route("/api/v1/orgs/{org}/teams/{team_slug}",                                      patch(update_team))
+        .route("/api/v1/orgs/{org}/teams/{team_slug}",                                      delete(delete_team))
+        .route("/api/v1/orgs/{org}/teams/{team_slug}/members",                              get(list_team_members))
+        .route("/api/v1/orgs/{org}/teams/{team_slug}/members/{username}",                   put(add_team_member))
+        .route("/api/v1/orgs/{org}/teams/{team_slug}/members/{username}",                   delete(remove_team_member))
+        .route("/api/v1/orgs/{org}/teams/{team_slug}/repos",                                get(list_team_repos))
+        .route("/api/v1/orgs/{org}/teams/{team_slug}/repos/{owner}/{repo}",                 put(add_team_repo))
+        .route("/api/v1/orgs/{org}/teams/{team_slug}/repos/{owner}/{repo}",                 delete(remove_team_repo))
 
         // git browser
         .route("/api/v1/repos/{owner}/{repo}/git/refs",                 get(list_refs))
