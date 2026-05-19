@@ -212,26 +212,12 @@ pub async fn list_commits(
         sep = sep
     );
 
-    let mut args = vec![
-        "log",
-        &git_ref,
-        &format!("--format={}", fmt),
-        &format!("-n {}", per_page),
-        &format!("--skip={}", skip),
-    ];
-
-    // if path filter provided, append --
-    let path_filter = params.path.clone();
-    if let Some(ref p) = path_filter {
-        args.push("--");
-        args.push(p.as_str());
-    }
-
+    // ✅ Build owned Strings first, then borrow them
     let mut git_args: Vec<String> = vec![
         "log".to_string(),
         git_ref.clone(),
         format!("--format={}", fmt),
-        format!("-n"),
+        "-n".to_string(),
         format!("{}", per_page),
         format!("--skip={}", skip),
     ];
