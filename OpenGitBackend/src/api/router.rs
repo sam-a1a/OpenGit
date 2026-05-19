@@ -39,11 +39,16 @@ use crate::{
             create_webhook, delete_webhook, get_delivery, get_webhook,
             list_deliveries, list_webhooks, ping_webhook, redeliver, update_webhook,
         },
-
         releases::{
             create_release, delete_asset, delete_release, download_asset,
             get_latest_release, get_release, get_release_by_tag, list_assets,
             list_releases, update_release, upload_asset,
+        },
+        notifications::{
+            delete_all_read, delete_notification, delete_repo_subscription,
+            get_notification, get_repo_subscription, list_notifications,
+            list_repo_notifications, mark_all_read, mark_read, mark_repo_read,
+            save_notification, set_repo_subscription, unread_count, unsave_notification,
         }
     },
     state::AppState,
@@ -118,6 +123,22 @@ pub fn build(state: AppState) -> Router {
         .route("/api/v1/repos/{owner}/{repo}/hooks/{hook_id}/deliveries",                    get(list_deliveries))
         .route("/api/v1/repos/{owner}/{repo}/hooks/{hook_id}/deliveries/{delivery_id}",      get(get_delivery))
         .route("/api/v1/repos/{owner}/{repo}/hooks/{hook_id}/deliveries/{delivery_id}/attempts", post(redeliver))
+
+        // notifications
+        .route("/api/v1/notifications",                                     get(list_notifications))
+        .route("/api/v1/notifications",                                     put(mark_all_read))
+        .route("/api/v1/notifications",                                     delete(delete_all_read))
+        .route("/api/v1/notifications/count",                               get(unread_count))
+        .route("/api/v1/notifications/{id}",                                get(get_notification))
+        .route("/api/v1/notifications/{id}/read",                           patch(mark_read))
+        .route("/api/v1/notifications/{id}/save",                           put(save_notification))
+        .route("/api/v1/notifications/{id}/save",                           delete(unsave_notification))
+        .route("/api/v1/notifications/{id}",                                delete(delete_notification))
+        .route("/api/v1/repos/{owner}/{repo}/notifications",                get(list_repo_notifications))
+        .route("/api/v1/repos/{owner}/{repo}/notifications",                put(mark_repo_read))
+        .route("/api/v1/repos/{owner}/{repo}/subscription",                 get(get_repo_subscription))
+        .route("/api/v1/repos/{owner}/{repo}/subscription",                 put(set_repo_subscription))
+        .route("/api/v1/repos/{owner}/{repo}/subscription",                 delete(delete_repo_subscription))
 
         // git browser
         .route("/api/v1/repos/{owner}/{repo}/git/refs",                 get(list_refs))

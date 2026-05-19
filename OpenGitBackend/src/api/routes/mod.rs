@@ -3,6 +3,7 @@ pub mod git_browser;
 pub mod git_http;
 pub mod health;
 pub mod issues;
+pub mod notifications;
 pub mod pull_requests;
 pub mod releases;
 pub mod repos;
