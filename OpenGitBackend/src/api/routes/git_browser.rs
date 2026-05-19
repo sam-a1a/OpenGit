@@ -212,7 +212,6 @@ pub async fn list_commits(
         sep = sep
     );
 
-    // ✅ Build owned Strings first, then borrow them
     let mut git_args: Vec<String> = vec![
         "log".to_string(),
         git_ref.clone(),

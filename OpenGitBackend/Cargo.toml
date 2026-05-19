@@ -17,6 +17,10 @@ tower-http       = { version = "0.6",  features = ["cors", "trace", "compression
 tonic            = "0.14"
 prost            = "0.14"
 
+hmac   = "0.12.1"
+sha2   = "0.10.8"
+hex    = "0.4.3"
+
 # WebSockets
 tokio-tungstenite = "0.29"
 

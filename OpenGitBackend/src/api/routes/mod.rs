@@ -7,3 +7,4 @@ pub mod pull_requests;
 pub mod releases;
 pub mod repos;
 pub mod users;
+pub mod webhooks;

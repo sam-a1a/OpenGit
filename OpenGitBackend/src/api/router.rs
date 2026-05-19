@@ -35,6 +35,10 @@ use crate::{
             get_following, get_me, get_user, get_user_repos, list_ssh_keys,
             search_users, unblock_user, unfollow_user, update_me, update_status,
         },
+        webhooks::{
+            create_webhook, delete_webhook, get_delivery, get_webhook,
+            list_deliveries, list_webhooks, ping_webhook, redeliver, update_webhook,
+        },
 
         releases::{
             create_release, delete_asset, delete_release, download_asset,
@@ -103,6 +107,17 @@ pub fn build(state: AppState) -> Router {
         .route("/api/v1/repos/{owner}/{repo}/collaborators/{username}", delete(remove_collaborator))
         .route("/api/v1/repos/{owner}/{repo}/branch-protections",       get(list_branch_protections))
         .route("/api/v1/repos/{owner}/{repo}/branch-protections",       post(create_branch_protection))
+
+        // webhooks
+        .route("/api/v1/repos/{owner}/{repo}/hooks",                                         get(list_webhooks))
+        .route("/api/v1/repos/{owner}/{repo}/hooks",                                         post(create_webhook))
+        .route("/api/v1/repos/{owner}/{repo}/hooks/{hook_id}",                               get(get_webhook))
+        .route("/api/v1/repos/{owner}/{repo}/hooks/{hook_id}",                               patch(update_webhook))
+        .route("/api/v1/repos/{owner}/{repo}/hooks/{hook_id}",                               delete(delete_webhook))
+        .route("/api/v1/repos/{owner}/{repo}/hooks/{hook_id}/pings",                         post(ping_webhook))
+        .route("/api/v1/repos/{owner}/{repo}/hooks/{hook_id}/deliveries",                    get(list_deliveries))
+        .route("/api/v1/repos/{owner}/{repo}/hooks/{hook_id}/deliveries/{delivery_id}",      get(get_delivery))
+        .route("/api/v1/repos/{owner}/{repo}/hooks/{hook_id}/deliveries/{delivery_id}/attempts", post(redeliver))
 
         // git browser
         .route("/api/v1/repos/{owner}/{repo}/git/refs",                 get(list_refs))
