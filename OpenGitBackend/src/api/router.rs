@@ -35,6 +35,12 @@ use crate::{
             get_following, get_me, get_user, get_user_repos, list_ssh_keys,
             search_users, unblock_user, unfollow_user, update_me, update_status,
         },
+
+        releases::{
+            create_release, delete_asset, delete_release, download_asset,
+            get_latest_release, get_release, get_release_by_tag, list_assets,
+            list_releases, update_release, upload_asset,
+        }
     },
     state::AppState,
 };
@@ -167,6 +173,19 @@ pub fn build(state: AppState) -> Router {
         .route("/api/v1/repos/{owner}/{repo}/pulls/comments/{comment_id}/resolve",            put(resolve_review_comment))
         .route("/api/v1/repos/{owner}/{repo}/statuses/{sha}",                                 get(list_statuses))
         .route("/api/v1/repos/{owner}/{repo}/statuses/{sha}",                                 post(create_status))
+
+        // releases
+        .route("/api/v1/repos/{owner}/{repo}/releases",                         get(list_releases))
+        .route("/api/v1/repos/{owner}/{repo}/releases",                         post(create_release))
+        .route("/api/v1/repos/{owner}/{repo}/releases/latest",                  get(get_latest_release))
+        .route("/api/v1/repos/{owner}/{repo}/releases/tags/{tag}",              get(get_release_by_tag))
+        .route("/api/v1/repos/{owner}/{repo}/releases/{release_id}",            get(get_release))
+        .route("/api/v1/repos/{owner}/{repo}/releases/{release_id}",            patch(update_release))
+        .route("/api/v1/repos/{owner}/{repo}/releases/{release_id}",            delete(delete_release))
+        .route("/api/v1/repos/{owner}/{repo}/releases/{release_id}/assets",     get(list_assets))
+        .route("/api/v1/repos/{owner}/{repo}/releases/{release_id}/assets",     post(upload_asset))
+        .route("/api/v1/repos/{owner}/{repo}/releases/{release_id}/assets/{asset_id}", get(download_asset))
+        .route("/api/v1/repos/{owner}/{repo}/releases/{release_id}/assets/{asset_id}", delete(delete_asset))
 
         // git smart http
         .route("/{owner}/{repo}/info/refs",        get(info_refs))
