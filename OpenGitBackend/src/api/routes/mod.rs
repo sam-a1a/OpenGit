@@ -8,5 +8,6 @@ pub mod organizations;
 pub mod pull_requests;
 pub mod releases;
 pub mod repos;
+pub mod search;
 pub mod users;
 pub mod webhooks;

@@ -21,7 +21,7 @@ pub struct PaginationQuery {
     pub per_page: Option<i64>,
 }
 
-// ── Create org ────────────────────────────────────────────────────────────────
+// Create org
 
 #[derive(Debug, Deserialize)]
 pub struct CreateOrgInput {
@@ -95,7 +95,7 @@ pub async fn create_org(
     Ok((StatusCode::CREATED, Json(org)))
 }
 
-// ── Get org ───────────────────────────────────────────────────────────────────
+// Get org
 
 pub async fn get_org(
     State(state):   State<AppState>,
@@ -105,7 +105,7 @@ pub async fn get_org(
     Ok(Json(org))
 }
 
-// ── Update org ────────────────────────────────────────────────────────────────
+// Update org
 
 #[derive(Debug, Deserialize)]
 pub struct UpdateOrgInput {
@@ -153,7 +153,7 @@ pub async fn update_org(
     Ok(Json(updated))
 }
 
-// ── Delete org ────────────────────────────────────────────────────────────────
+// Delete org
 
 pub async fn delete_org(
     State(state):   State<AppState>,
@@ -172,7 +172,7 @@ pub async fn delete_org(
     Ok(StatusCode::NO_CONTENT)
 }
 
-// ── List orgs for authenticated user ──────────────────────────────────────────
+// List orgs for authenticated user
 
 pub async fn list_my_orgs(
     State(state): State<AppState>,
@@ -199,7 +199,7 @@ pub async fn list_my_orgs(
     Ok(Json(orgs))
 }
 
-// ── List orgs for a user ──────────────────────────────────────────────────────
+// List orgs for a user
 
 pub async fn list_user_orgs(
     State(state):   State<AppState>,
@@ -230,7 +230,7 @@ pub async fn list_user_orgs(
     Ok(Json(orgs))
 }
 
-// ── Members ───────────────────────────────────────────────────────────────────
+// Members
 
 pub async fn list_members(
     State(state):   State<AppState>,
@@ -367,7 +367,7 @@ pub async fn update_member_role(
     Ok(Json(member))
 }
 
-// ── Invitations ───────────────────────────────────────────────────────────────
+// Invitations
 
 #[derive(Debug, Deserialize)]
 pub struct InviteInput {
@@ -528,7 +528,7 @@ pub async fn cancel_invitation(
     Ok(StatusCode::NO_CONTENT)
 }
 
-// ── Teams ─────────────────────────────────────────────────────────────────────
+// Teams
 
 #[derive(Debug, Deserialize)]
 pub struct CreateTeamInput {
@@ -676,7 +676,7 @@ pub async fn delete_team(
     Ok(StatusCode::NO_CONTENT)
 }
 
-// ── Team members ──────────────────────────────────────────────────────────────
+// Team members
 
 pub async fn list_team_members(
     State(state):   State<AppState>,
@@ -764,7 +764,7 @@ pub async fn remove_team_member(
     Ok(StatusCode::NO_CONTENT)
 }
 
-// ── Team repos ────────────────────────────────────────────────────────────────
+// Team repos
 
 pub async fn list_team_repos(
     State(state):   State<AppState>,
@@ -872,7 +872,7 @@ pub async fn remove_team_repo(
     Ok(StatusCode::NO_CONTENT)
 }
 
-// ── Org repos ─────────────────────────────────────────────────────────────────
+// Org repos
 
 pub async fn list_org_repos(
     State(state):   State<AppState>,
@@ -899,7 +899,7 @@ pub async fn list_org_repos(
     Ok(Json(repos))
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// Helpers
 
 async fn find_org_by_name(state: &AppState, name: &str) -> Result<Organization, AppError> {
     sqlx::query_as("SELECT * FROM organizations WHERE name = $1")

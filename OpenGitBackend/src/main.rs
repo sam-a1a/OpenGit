@@ -2,7 +2,7 @@ use anyhow::Result;
 use redis::Client as RedisClient;
 use sqlx::postgres::PgPoolOptions;
 use std::net::SocketAddr;
-use tracing::info;
+use tracing::{info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 mod api;
@@ -51,12 +51,21 @@ async fn main() -> Result<()> {
     let cache = redis::aio::ConnectionManager::new(redis_client).await?;
     info!("Valkey connected");
 
-    let state     = AppState::new(db, cache, config.clone());
-    let app       = api::router::build(state.clone());
-    let ssh_port  = config.ssh_port;
-    let ssh_state = state.clone();
+    // Build application state
+    let state = AppState::new(db, cache, config.clone());
 
-    // spawn SSH server in background
+    // Set up search indexes (Meilisearch)
+    info!("Setting up search indexes...");
+    if let Err(e) = crate::search::indexer::setup_indexes(&state).await {
+        warn!("Search index setup failed (Meilisearch may be unavailable): {:?}", e);
+    }
+
+    // Build HTTP router
+    let app = api::router::build(state.clone());
+
+    // Spawn SSH server in the background
+    let ssh_port = config.ssh_port;
+    let ssh_state = state.clone();
     tokio::spawn(async move {
         if let Err(e) = git::ssh::server::start(ssh_state, ssh_port).await {
             tracing::error!("SSH server error: {}", e);

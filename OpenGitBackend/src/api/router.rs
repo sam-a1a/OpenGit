@@ -57,6 +57,10 @@ use crate::{
             list_my_orgs, list_org_repos, list_team_members, list_team_repos, list_teams,
             list_user_orgs, remove_member, remove_team_member, remove_team_repo,
             update_member_role, update_org, update_team,
+        },
+        search::{
+            reindex_all, search_comments_meili, search_issues_meili,
+            search_prs_meili, search_repos_meili, search_users_meili, unified_search,
         }
     },
     state::AppState,
@@ -182,6 +186,15 @@ pub fn build(state: AppState) -> Router {
         .route("/api/v1/orgs/{org}/teams/{team_slug}/repos",                                get(list_team_repos))
         .route("/api/v1/orgs/{org}/teams/{team_slug}/repos/{owner}/{repo}",                 put(add_team_repo))
         .route("/api/v1/orgs/{org}/teams/{team_slug}/repos/{owner}/{repo}",                 delete(remove_team_repo))
+
+        // search
+        .route("/api/v1/search",              get(unified_search))
+        .route("/api/v1/search/repositories", get(search_repos_meili))
+        .route("/api/v1/search/issues",       get(search_issues_meili))
+        .route("/api/v1/search/pulls",        get(search_prs_meili))
+        .route("/api/v1/search/users",        get(search_users_meili))
+        .route("/api/v1/search/comments",     get(search_comments_meili))
+        .route("/api/v1/admin/reindex",       post(reindex_all))
 
         // git browser
         .route("/api/v1/repos/{owner}/{repo}/git/refs",                 get(list_refs))
