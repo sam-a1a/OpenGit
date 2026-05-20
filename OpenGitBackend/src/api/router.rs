@@ -61,6 +61,15 @@ use crate::{
         search::{
             reindex_all, search_comments_meili, search_issues_meili,
             search_prs_meili, search_repos_meili, search_users_meili, unified_search,
+        },
+        ci::{
+            cancel_run, create_runner_group, create_workflow, delete_artifact,
+            delete_run, delete_runner, delete_runner_group, delete_workflow,
+            disable_workflow, download_artifact, enable_workflow, get_job,
+            get_run, get_runner, list_artifacts, list_jobs, list_runner_groups,
+            list_runners, list_runs, list_workflow_runs, list_workflows,
+            register_runner, rerun_workflow, runner_heartbeat, trigger_run,
+            update_job, upload_artifact, upsert_step,
         }
     },
     state::AppState,
@@ -69,6 +78,7 @@ use axum::{
     routing::{delete, get, patch, post, put},
     Router,
 };
+use crate::api::routes::ci::get_workflow;
 
 pub fn build(state: AppState) -> Router {
     Router::new()
@@ -195,6 +205,47 @@ pub fn build(state: AppState) -> Router {
         .route("/api/v1/search/users",        get(search_users_meili))
         .route("/api/v1/search/comments",     get(search_comments_meili))
         .route("/api/v1/admin/reindex",       post(reindex_all))
+
+        // CI/CD — workflows
+        .route("/api/v1/repos/{owner}/{repo}/actions/workflows",                        get(list_workflows))
+        .route("/api/v1/repos/{owner}/{repo}/actions/workflows",                        post(create_workflow))
+        .route("/api/v1/repos/{owner}/{repo}/actions/workflows/{workflow_id}",          get(get_workflow))
+        .route("/api/v1/repos/{owner}/{repo}/actions/workflows/{workflow_id}",          delete(delete_workflow))
+        .route("/api/v1/repos/{owner}/{repo}/actions/workflows/{workflow_id}/enable",   put(enable_workflow))
+        .route("/api/v1/repos/{owner}/{repo}/actions/workflows/{workflow_id}/disable",  put(disable_workflow))
+        .route("/api/v1/repos/{owner}/{repo}/actions/workflows/{workflow_id}/dispatches", post(trigger_run))
+        .route("/api/v1/repos/{owner}/{repo}/actions/workflows/{workflow_id}/runs",     get(list_workflow_runs))
+
+        // CI/CD — runs
+        .route("/api/v1/repos/{owner}/{repo}/actions/runs",                             get(list_runs))
+        .route("/api/v1/repos/{owner}/{repo}/actions/runs/{run_id}",                    get(get_run))
+        .route("/api/v1/repos/{owner}/{repo}/actions/runs/{run_id}",                    delete(delete_run))
+        .route("/api/v1/repos/{owner}/{repo}/actions/runs/{run_id}/cancel",             post(cancel_run))
+        .route("/api/v1/repos/{owner}/{repo}/actions/runs/{run_id}/rerun",              post(rerun_workflow))
+        .route("/api/v1/repos/{owner}/{repo}/actions/runs/{run_id}/jobs",               get(list_jobs))
+        .route("/api/v1/repos/{owner}/{repo}/actions/runs/{run_id}/artifacts",          get(list_artifacts))
+        .route("/api/v1/repos/{owner}/{repo}/actions/runs/{run_id}/artifacts",          post(upload_artifact))
+
+        // CI/CD — jobs
+        .route("/api/v1/repos/{owner}/{repo}/actions/jobs/{job_id}",                    get(get_job))
+
+        // CI/CD — runner reporting
+        .route("/api/v1/actions/jobs/{job_id}/update",                                  post(update_job))
+        .route("/api/v1/actions/jobs/{job_id}/steps",                                   post(upsert_step))
+        .route("/api/v1/actions/runners/heartbeat",                                     post(runner_heartbeat))
+
+        // CI/CD — artifacts
+        .route("/api/v1/repos/{owner}/{repo}/actions/artifacts/{artifact_id}",          get(download_artifact))
+        .route("/api/v1/repos/{owner}/{repo}/actions/artifacts/{artifact_id}",          delete(delete_artifact))
+
+        // CI/CD — runners
+        .route("/api/v1/actions/runners",                                               get(list_runners))
+        .route("/api/v1/actions/runners",                                               post(register_runner))
+        .route("/api/v1/actions/runners/{runner_id}",                                   get(get_runner))
+        .route("/api/v1/actions/runners/{runner_id}",                                   delete(delete_runner))
+        .route("/api/v1/actions/runner-groups",                                         get(list_runner_groups))
+        .route("/api/v1/actions/runner-groups",                                         post(create_runner_group))
+        .route("/api/v1/actions/runner-groups/{group_id}",                              delete(delete_runner_group))
 
         // git browser
         .route("/api/v1/repos/{owner}/{repo}/git/refs",                 get(list_refs))
