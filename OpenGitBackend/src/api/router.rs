@@ -70,6 +70,14 @@ use crate::{
             list_runners, list_runs, list_workflow_runs, list_workflows,
             register_runner, rerun_workflow, runner_heartbeat, trigger_run,
             update_job, upload_artifact, upsert_step,
+        },
+        admin::{
+            create_abuse_report, create_ban, delete_ban, delete_repo_admin,
+            delete_setting, delete_user_admin, get_abuse_report, get_audit_entry,
+            get_setting, get_user_admin, instance_stats, list_abuse_reports,
+            list_audit_log, list_bans, list_repos_admin, list_settings,
+            list_users, resolve_abuse_report, suspend_user, unsuspend_user,
+            update_setting, update_user_admin,
         }
     },
     state::AppState,
@@ -246,6 +254,42 @@ pub fn build(state: AppState) -> Router {
         .route("/api/v1/actions/runner-groups",                                         get(list_runner_groups))
         .route("/api/v1/actions/runner-groups",                                         post(create_runner_group))
         .route("/api/v1/actions/runner-groups/{group_id}",                              delete(delete_runner_group))
+
+        // admin — settings
+        .route("/api/v1/admin/settings",              get(list_settings))
+        .route("/api/v1/admin/settings/{key}",        get(get_setting))
+        .route("/api/v1/admin/settings/{key}",        put(update_setting))
+        .route("/api/v1/admin/settings/{key}",        delete(delete_setting))
+
+        // admin — stats
+        .route("/api/v1/admin/stats",                 get(instance_stats))
+
+        // admin — audit log
+        .route("/api/v1/admin/audit-log",             get(list_audit_log))
+        .route("/api/v1/admin/audit-log/{log_id}",    get(get_audit_entry))
+
+        // admin — users
+        .route("/api/v1/admin/users",                         get(list_users))
+        .route("/api/v1/admin/users/{username}",               get(get_user_admin))
+        .route("/api/v1/admin/users/{username}",               patch(update_user_admin))
+        .route("/api/v1/admin/users/{username}",               delete(delete_user_admin))
+        .route("/api/v1/admin/users/{username}/suspend",        put(suspend_user))
+        .route("/api/v1/admin/users/{username}/unsuspend",      put(unsuspend_user))
+
+        // admin — repos
+        .route("/api/v1/admin/repos",                          get(list_repos_admin))
+        .route("/api/v1/admin/repos/{owner}/{repo}",            delete(delete_repo_admin))
+
+        // admin — bans
+        .route("/api/v1/admin/bans",                  get(list_bans))
+        .route("/api/v1/admin/bans",                  post(create_ban))
+        .route("/api/v1/admin/bans/{ban_id}",         delete(delete_ban))
+
+        // admin — abuse reports
+        .route("/api/v1/admin/reports",               get(list_abuse_reports))
+        .route("/api/v1/admin/reports",               post(create_abuse_report))
+        .route("/api/v1/admin/reports/{report_id}",   get(get_abuse_report))
+        .route("/api/v1/admin/reports/{report_id}/resolve", put(resolve_abuse_report))
 
         // git browser
         .route("/api/v1/repos/{owner}/{repo}/git/refs",                 get(list_refs))
