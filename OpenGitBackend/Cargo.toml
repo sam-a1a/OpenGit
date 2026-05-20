@@ -21,6 +21,9 @@ hmac   = "0.12.1"
 sha2   = "0.10.8"
 hex    = "0.4.3"
 
+totp-rs = { version = "5", features = ["gen_secret", "otpauth"] }
+urlencoding = "2"
+
 # WebSockets
 tokio-tungstenite = "0.29"
 

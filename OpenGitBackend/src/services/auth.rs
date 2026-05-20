@@ -149,7 +149,7 @@ pub async fn login(
     secret: &str,
     ip:     Option<&str>,
     ua:     Option<&str>,
-) -> Result<AuthOutput, AppError> {
+) -> Result<serde_json::Value, AppError> {
     let user = users::find_by_email(pool, &input.email)
         .await?
         .ok_or(AppError::Unauthorized)?;
@@ -161,7 +161,18 @@ pub async fn login(
         return Err(AppError::Unauthorized);
     }
 
-    issue_tokens(pool, user, secret, ip, ua).await
+    // if 2FA enabled return pending token
+    if user.two_factor_enabled {
+        let pending_token = generate_access_token(user.id, "pending_2fa", secret)?;
+        return Ok(serde_json::json!({
+            "two_factor_required": true,
+            "pending_token":       pending_token,
+        }));
+    }
+
+    let output = issue_tokens(pool, user, secret, ip, ua).await?;
+    Ok(serde_json::to_value(output)
+        .map_err(|e| AppError::Internal(anyhow::anyhow!("{}", e)))?)
 }
 
 // Refresh

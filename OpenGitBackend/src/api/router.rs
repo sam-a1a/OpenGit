@@ -78,6 +78,10 @@ use crate::{
             list_audit_log, list_bans, list_repos_admin, list_settings,
             list_users, resolve_abuse_report, suspend_user, unsuspend_user,
             update_setting, update_user_admin,
+        },
+        two_factor::{
+            disable_2fa, enable_2fa, get_2fa_status, regenerate_backup_codes,
+            setup_2fa, verify_2fa_login,
         }
     },
     state::AppState,
@@ -290,6 +294,14 @@ pub fn build(state: AppState) -> Router {
         .route("/api/v1/admin/reports",               post(create_abuse_report))
         .route("/api/v1/admin/reports/{report_id}",   get(get_abuse_report))
         .route("/api/v1/admin/reports/{report_id}/resolve", put(resolve_abuse_report))
+
+        // 2FA
+        .route("/api/v1/user/2fa",                      get(get_2fa_status))
+        .route("/api/v1/user/2fa/setup",                post(setup_2fa))
+        .route("/api/v1/user/2fa/enable",               post(enable_2fa))
+        .route("/api/v1/user/2fa",                      delete(disable_2fa))
+        .route("/api/v1/user/2fa/backup-codes",         post(regenerate_backup_codes))
+        .route("/api/v1/auth/2fa/verify",               post(verify_2fa_login))
 
         // git browser
         .route("/api/v1/repos/{owner}/{repo}/git/refs",                 get(list_refs))
