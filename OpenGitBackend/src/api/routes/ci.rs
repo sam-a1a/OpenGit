@@ -31,6 +31,168 @@ pub struct RunQuery {
     pub per_page: Option<i64>,
 }
 
+// Private deduplication helper functions
+
+fn get_limit_and_offset(page: Option<i64>, per_page: Option<i64>, default_per_page: i64) -> (i64, i64) {
+    let limit = per_page.unwrap_or(default_per_page).min(100);
+    let offset = (page.unwrap_or(1) - 1) * limit;
+    (limit, offset)
+}
+
+async fn fetch_repo(
+    db: &sqlx::PgPool,
+    owner_name: &str,
+    repo_name: &str,
+) -> Result<(Uuid, crate::models::repo::Repository), AppError> {
+    let owner = users::find_by_username(db, owner_name)
+        .await?
+        .ok_or_else(|| AppError::NotFound("User".into()))?;
+
+    let repo = repos::find_by_owner_and_name(db, owner.id, repo_name)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Repository".into()))?;
+
+    Ok((owner.id, repo))
+}
+
+async fn fetch_repo_with_auth(
+    db: &sqlx::PgPool,
+    owner_name: &str,
+    repo_name: &str,
+    auth_user_id: Uuid,
+) -> Result<crate::models::repo::Repository, AppError> {
+    let (owner_id, repo) = fetch_repo(db, owner_name, repo_name).await?;
+    if owner_id != auth_user_id {
+        return Err(AppError::Forbidden);
+    }
+    Ok(repo)
+}
+
+fn get_s3_client(state: &AppState) -> aws_sdk_s3::Client {
+    let creds = aws_sdk_s3::config::Credentials::new(
+        &state.config.minio_access_key,
+        &state.config.minio_secret_key,
+        None, None, "opengit",
+    );
+    let s3_config = aws_sdk_s3::config::Builder::new()
+        .endpoint_url(&state.config.minio_endpoint)
+        .credentials_provider(creds)
+        .region(aws_sdk_s3::config::Region::new("us-east-1"))
+        .force_path_style(true)
+        .behavior_version(aws_sdk_s3::config::BehaviorVersion::latest())
+        .build();
+    aws_sdk_s3::Client::from_conf(s3_config)
+}
+
+async fn fetch_workflow_by_repo(db: &sqlx::PgPool, id: Uuid, repo_id: Uuid) -> Result<Workflow, AppError> {
+    sqlx::query_as("SELECT * FROM workflows WHERE id = $1 AND repo_id = $2")
+        .bind(id)
+        .bind(repo_id)
+        .fetch_optional(db)
+        .await
+        .map_err(AppError::Database)?
+        .ok_or_else(|| AppError::NotFound("Workflow".into()))
+}
+
+async fn fetch_run_by_repo(db: &sqlx::PgPool, id: Uuid, repo_id: Uuid) -> Result<WorkflowRun, AppError> {
+    sqlx::query_as("SELECT * FROM workflow_runs WHERE id = $1 AND repo_id = $2")
+        .bind(id)
+        .bind(repo_id)
+        .fetch_optional(db)
+        .await
+        .map_err(AppError::Database)?
+        .ok_or_else(|| AppError::NotFound("Workflow run".into()))
+}
+
+async fn fetch_artifact_by_repo(db: &sqlx::PgPool, id: Uuid, repo_id: Uuid) -> Result<Artifact, AppError> {
+    sqlx::query_as("SELECT * FROM artifacts WHERE id = $1 AND repo_id = $2")
+        .bind(id)
+        .bind(repo_id)
+        .fetch_optional(db)
+        .await
+        .map_err(AppError::Database)?
+        .ok_or_else(|| AppError::NotFound("Artifact".into()))
+}
+
+async fn update_workflow_state(
+    db: &sqlx::PgPool,
+    workflow_id: Uuid,
+    repo_id: Uuid,
+    state: &str,
+) -> Result<(), AppError> {
+    sqlx::query(
+        "UPDATE workflows SET state = $1, updated_at = now()
+         WHERE id = $2 AND repo_id = $3"
+    )
+        .bind(state)
+        .bind(workflow_id)
+        .bind(repo_id)
+        .execute(db)
+        .await
+        .map_err(AppError::Database)?;
+    Ok(())
+}
+
+async fn delete_entity_by_repo(
+    db: &sqlx::PgPool,
+    table: &str,
+    id: Uuid,
+    repo_id: Uuid,
+) -> Result<(), AppError> {
+    let query_str = match table {
+        "workflows" => "DELETE FROM workflows WHERE id = $1 AND repo_id = $2",
+        "workflow_runs" => "DELETE FROM workflow_runs WHERE id = $1 AND repo_id = $2",
+        "artifacts" => "DELETE FROM artifacts WHERE id = $1 AND repo_id = $2",
+        _ => return Err(AppError::Internal(anyhow::anyhow!("Unsupported delete table"))),
+    };
+
+    sqlx::query(query_str)
+        .bind(id)
+        .bind(repo_id)
+        .execute(db)
+        .await
+        .map_err(AppError::Database)?;
+
+    Ok(())
+}
+
+async fn query_workflow_runs(
+    db: &sqlx::PgPool,
+    repo_id: Uuid,
+    workflow_id: Option<Uuid>,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<WorkflowRun>, AppError> {
+    if let Some(wf_id) = workflow_id {
+        sqlx::query_as(
+            "SELECT * FROM workflow_runs
+             WHERE workflow_id = $1 AND repo_id = $2
+             ORDER BY created_at DESC
+             LIMIT $3 OFFSET $4"
+        )
+            .bind(wf_id)
+            .bind(repo_id)
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(db)
+            .await
+            .map_err(AppError::Database)
+    } else {
+        sqlx::query_as(
+            "SELECT * FROM workflow_runs
+             WHERE repo_id = $1
+             ORDER BY created_at DESC
+             LIMIT $2 OFFSET $3"
+        )
+            .bind(repo_id)
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(db)
+            .await
+            .map_err(AppError::Database)
+    }
+}
+
 // Workflows
 
 #[derive(Debug, Deserialize)]
@@ -45,16 +207,8 @@ pub async fn list_workflows(
     Path((owner, repo_name)): Path<(String, String)>,
     Query(pagination): Query<PaginationQuery>,
 ) -> Result<impl IntoResponse, AppError> {
-    let owner = users::find_by_username(&state.db, &owner)
-        .await?
-        .ok_or(AppError::NotFound("User".into()))?;
-
-    let repo = repos::find_by_owner_and_name(&state.db, owner.id, &repo_name)
-        .await?
-        .ok_or(AppError::NotFound("Repository".into()))?;
-
-    let per_page = pagination.per_page.unwrap_or(30).min(100);
-    let offset   = (pagination.page.unwrap_or(1) - 1) * per_page;
+    let (_, repo) = fetch_repo(&state.db, &owner, &repo_name).await?;
+    let (per_page, offset) = get_limit_and_offset(pagination.page, pagination.per_page, 30);
 
     let workflows: Vec<Workflow> = sqlx::query_as(
         "SELECT * FROM workflows WHERE repo_id = $1
@@ -77,23 +231,8 @@ pub async fn get_workflow(
     State(state):   State<AppState>,
     Path((owner, repo_name, workflow_id)): Path<(String, String, Uuid)>,
 ) -> Result<impl IntoResponse, AppError> {
-    let owner = users::find_by_username(&state.db, &owner)
-        .await?
-        .ok_or(AppError::NotFound("User".into()))?;
-
-    let repo = repos::find_by_owner_and_name(&state.db, owner.id, &repo_name)
-        .await?
-        .ok_or(AppError::NotFound("Repository".into()))?;
-
-    let workflow: Workflow = sqlx::query_as(
-        "SELECT * FROM workflows WHERE id = $1 AND repo_id = $2"
-    )
-        .bind(workflow_id)
-        .bind(repo.id)
-        .fetch_optional(&state.db)
-        .await
-        .map_err(AppError::Database)?
-        .ok_or(AppError::NotFound("Workflow".into()))?;
+    let (_, repo) = fetch_repo(&state.db, &owner, &repo_name).await?;
+    let workflow = fetch_workflow_by_repo(&state.db, workflow_id, repo.id).await?;
 
     Ok(Json(workflow))
 }
@@ -108,17 +247,7 @@ pub async fn create_workflow(
         return Err(AppError::BadRequest("Workflow name is required".into()));
     }
 
-    let owner = users::find_by_username(&state.db, &owner)
-        .await?
-        .ok_or(AppError::NotFound("User".into()))?;
-
-    if owner.id != auth_user.user_id {
-        return Err(AppError::Forbidden);
-    }
-
-    let repo = repos::find_by_owner_and_name(&state.db, owner.id, &repo_name)
-        .await?
-        .ok_or(AppError::NotFound("Repository".into()))?;
+    let repo = fetch_repo_with_auth(&state.db, &owner, &repo_name, auth_user.user_id).await?;
 
     let workflow: Workflow = sqlx::query_as(
         "INSERT INTO workflows (repo_id, name, path, state)
@@ -141,27 +270,8 @@ pub async fn enable_workflow(
     auth_user:      AuthUser,
     Path((owner, repo_name, workflow_id)): Path<(String, String, Uuid)>,
 ) -> Result<impl IntoResponse, AppError> {
-    let owner = users::find_by_username(&state.db, &owner)
-        .await?
-        .ok_or(AppError::NotFound("User".into()))?;
-
-    if owner.id != auth_user.user_id {
-        return Err(AppError::Forbidden);
-    }
-
-    let repo = repos::find_by_owner_and_name(&state.db, owner.id, &repo_name)
-        .await?
-        .ok_or(AppError::NotFound("Repository".into()))?;
-
-    sqlx::query(
-        "UPDATE workflows SET state = 'active', updated_at = now()
-         WHERE id = $1 AND repo_id = $2"
-    )
-        .bind(workflow_id)
-        .bind(repo.id)
-        .execute(&state.db)
-        .await
-        .map_err(AppError::Database)?;
+    let repo = fetch_repo_with_auth(&state.db, &owner, &repo_name, auth_user.user_id).await?;
+    update_workflow_state(&state.db, workflow_id, repo.id, "active").await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -171,27 +281,8 @@ pub async fn disable_workflow(
     auth_user:      AuthUser,
     Path((owner, repo_name, workflow_id)): Path<(String, String, Uuid)>,
 ) -> Result<impl IntoResponse, AppError> {
-    let owner = users::find_by_username(&state.db, &owner)
-        .await?
-        .ok_or(AppError::NotFound("User".into()))?;
-
-    if owner.id != auth_user.user_id {
-        return Err(AppError::Forbidden);
-    }
-
-    let repo = repos::find_by_owner_and_name(&state.db, owner.id, &repo_name)
-        .await?
-        .ok_or(AppError::NotFound("Repository".into()))?;
-
-    sqlx::query(
-        "UPDATE workflows SET state = 'disabled_manually', updated_at = now()
-         WHERE id = $1 AND repo_id = $2"
-    )
-        .bind(workflow_id)
-        .bind(repo.id)
-        .execute(&state.db)
-        .await
-        .map_err(AppError::Database)?;
+    let repo = fetch_repo_with_auth(&state.db, &owner, &repo_name, auth_user.user_id).await?;
+    update_workflow_state(&state.db, workflow_id, repo.id, "disabled_manually").await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -201,24 +292,8 @@ pub async fn delete_workflow(
     auth_user:      AuthUser,
     Path((owner, repo_name, workflow_id)): Path<(String, String, Uuid)>,
 ) -> Result<impl IntoResponse, AppError> {
-    let owner = users::find_by_username(&state.db, &owner)
-        .await?
-        .ok_or(AppError::NotFound("User".into()))?;
-
-    if owner.id != auth_user.user_id {
-        return Err(AppError::Forbidden);
-    }
-
-    let repo = repos::find_by_owner_and_name(&state.db, owner.id, &repo_name)
-        .await?
-        .ok_or(AppError::NotFound("Repository".into()))?;
-
-    sqlx::query("DELETE FROM workflows WHERE id = $1 AND repo_id = $2")
-        .bind(workflow_id)
-        .bind(repo.id)
-        .execute(&state.db)
-        .await
-        .map_err(AppError::Database)?;
+    let repo = fetch_repo_with_auth(&state.db, &owner, &repo_name, auth_user.user_id).await?;
+    delete_entity_by_repo(&state.db, "workflows", workflow_id, repo.id).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -237,23 +312,12 @@ pub async fn trigger_run(
     Path((owner, repo_name, workflow_id)): Path<(String, String, Uuid)>,
     Json(input):    Json<TriggerRunInput>,
 ) -> Result<impl IntoResponse, AppError> {
-    let owner = users::find_by_username(&state.db, &owner)
-        .await?
-        .ok_or(AppError::NotFound("User".into()))?;
+    let (_, repo) = fetch_repo(&state.db, &owner, &repo_name).await?;
 
-    let repo = repos::find_by_owner_and_name(&state.db, owner.id, &repo_name)
-        .await?
-        .ok_or(AppError::NotFound("Repository".into()))?;
-
-    let workflow: Workflow = sqlx::query_as(
-        "SELECT * FROM workflows WHERE id = $1 AND repo_id = $2 AND state = 'active'"
-    )
-        .bind(workflow_id)
-        .bind(repo.id)
-        .fetch_optional(&state.db)
-        .await
-        .map_err(AppError::Database)?
-        .ok_or(AppError::NotFound("Workflow".into()))?;
+    let workflow = fetch_workflow_by_repo(&state.db, workflow_id, repo.id).await?;
+    if workflow.state != "active" {
+        return Err(AppError::BadRequest("Workflow is not active".into()));
+    }
 
     // get next run number
     let row: (i64,) = sqlx::query_as(
@@ -306,29 +370,10 @@ pub async fn list_runs(
     Path((owner, repo_name)): Path<(String, String)>,
     Query(params):  Query<RunQuery>,
 ) -> Result<impl IntoResponse, AppError> {
-    let owner = users::find_by_username(&state.db, &owner)
-        .await?
-        .ok_or(AppError::NotFound("User".into()))?;
+    let (_, repo) = fetch_repo(&state.db, &owner, &repo_name).await?;
+    let (per_page, offset) = get_limit_and_offset(params.page, params.per_page, 30);
 
-    let repo = repos::find_by_owner_and_name(&state.db, owner.id, &repo_name)
-        .await?
-        .ok_or(AppError::NotFound("Repository".into()))?;
-
-    let per_page = params.per_page.unwrap_or(30).min(100);
-    let offset   = (params.page.unwrap_or(1) - 1) * per_page;
-
-    let runs: Vec<WorkflowRun> = sqlx::query_as(
-        "SELECT * FROM workflow_runs
-         WHERE repo_id = $1
-         ORDER BY created_at DESC
-         LIMIT $2 OFFSET $3"
-    )
-        .bind(repo.id)
-        .bind(per_page)
-        .bind(offset)
-        .fetch_all(&state.db)
-        .await
-        .map_err(AppError::Database)?;
+    let runs = query_workflow_runs(&state.db, repo.id, None, per_page, offset).await?;
 
     Ok(Json(json!({
         "workflow_runs": runs,
@@ -342,30 +387,10 @@ pub async fn list_workflow_runs(
     Path((owner, repo_name, workflow_id)): Path<(String, String, Uuid)>,
     Query(params):  Query<RunQuery>,
 ) -> Result<impl IntoResponse, AppError> {
-    let owner = users::find_by_username(&state.db, &owner)
-        .await?
-        .ok_or(AppError::NotFound("User".into()))?;
+    let (_, repo) = fetch_repo(&state.db, &owner, &repo_name).await?;
+    let (per_page, offset) = get_limit_and_offset(params.page, params.per_page, 30);
 
-    let repo = repos::find_by_owner_and_name(&state.db, owner.id, &repo_name)
-        .await?
-        .ok_or(AppError::NotFound("Repository".into()))?;
-
-    let per_page = params.per_page.unwrap_or(30).min(100);
-    let offset   = (params.page.unwrap_or(1) - 1) * per_page;
-
-    let runs: Vec<WorkflowRun> = sqlx::query_as(
-        "SELECT * FROM workflow_runs
-         WHERE workflow_id = $1 AND repo_id = $2
-         ORDER BY created_at DESC
-         LIMIT $3 OFFSET $4"
-    )
-        .bind(workflow_id)
-        .bind(repo.id)
-        .bind(per_page)
-        .bind(offset)
-        .fetch_all(&state.db)
-        .await
-        .map_err(AppError::Database)?;
+    let runs = query_workflow_runs(&state.db, repo.id, Some(workflow_id), per_page, offset).await?;
 
     Ok(Json(json!({
         "workflow_runs": runs,
@@ -378,23 +403,8 @@ pub async fn get_run(
     State(state):   State<AppState>,
     Path((owner, repo_name, run_id)): Path<(String, String, Uuid)>,
 ) -> Result<impl IntoResponse, AppError> {
-    let owner = users::find_by_username(&state.db, &owner)
-        .await?
-        .ok_or(AppError::NotFound("User".into()))?;
-
-    let repo = repos::find_by_owner_and_name(&state.db, owner.id, &repo_name)
-        .await?
-        .ok_or(AppError::NotFound("Repository".into()))?;
-
-    let run: WorkflowRun = sqlx::query_as(
-        "SELECT * FROM workflow_runs WHERE id = $1 AND repo_id = $2"
-    )
-        .bind(run_id)
-        .bind(repo.id)
-        .fetch_optional(&state.db)
-        .await
-        .map_err(AppError::Database)?
-        .ok_or(AppError::NotFound("Workflow run".into()))?;
+    let (_, repo) = fetch_repo(&state.db, &owner, &repo_name).await?;
+    let run = fetch_run_by_repo(&state.db, run_id, repo.id).await?;
 
     Ok(Json(run))
 }
@@ -404,17 +414,7 @@ pub async fn cancel_run(
     auth_user:      AuthUser,
     Path((owner, repo_name, run_id)): Path<(String, String, Uuid)>,
 ) -> Result<impl IntoResponse, AppError> {
-    let owner = users::find_by_username(&state.db, &owner)
-        .await?
-        .ok_or(AppError::NotFound("User".into()))?;
-
-    if owner.id != auth_user.user_id {
-        return Err(AppError::Forbidden);
-    }
-
-    let repo = repos::find_by_owner_and_name(&state.db, owner.id, &repo_name)
-        .await?
-        .ok_or(AppError::NotFound("Repository".into()))?;
+    let repo = fetch_repo_with_auth(&state.db, &owner, &repo_name, auth_user.user_id).await?;
 
     sqlx::query(
         "UPDATE workflow_runs
@@ -450,23 +450,8 @@ pub async fn rerun_workflow(
     auth_user:      AuthUser,
     Path((owner, repo_name, run_id)): Path<(String, String, Uuid)>,
 ) -> Result<impl IntoResponse, AppError> {
-    let owner = users::find_by_username(&state.db, &owner)
-        .await?
-        .ok_or(AppError::NotFound("User".into()))?;
-
-    let repo = repos::find_by_owner_and_name(&state.db, owner.id, &repo_name)
-        .await?
-        .ok_or(AppError::NotFound("Repository".into()))?;
-
-    let existing: WorkflowRun = sqlx::query_as(
-        "SELECT * FROM workflow_runs WHERE id = $1 AND repo_id = $2"
-    )
-        .bind(run_id)
-        .bind(repo.id)
-        .fetch_optional(&state.db)
-        .await
-        .map_err(AppError::Database)?
-        .ok_or(AppError::NotFound("Workflow run".into()))?;
+    let (_, repo) = fetch_repo(&state.db, &owner, &repo_name).await?;
+    let existing = fetch_run_by_repo(&state.db, run_id, repo.id).await?;
 
     let row: (i64,) = sqlx::query_as(
         "SELECT COALESCE(MAX(run_number), 0) + 1 FROM workflow_runs WHERE workflow_id = $1"
@@ -503,24 +488,8 @@ pub async fn delete_run(
     auth_user:      AuthUser,
     Path((owner, repo_name, run_id)): Path<(String, String, Uuid)>,
 ) -> Result<impl IntoResponse, AppError> {
-    let owner = users::find_by_username(&state.db, &owner)
-        .await?
-        .ok_or(AppError::NotFound("User".into()))?;
-
-    if owner.id != auth_user.user_id {
-        return Err(AppError::Forbidden);
-    }
-
-    let repo = repos::find_by_owner_and_name(&state.db, owner.id, &repo_name)
-        .await?
-        .ok_or(AppError::NotFound("Repository".into()))?;
-
-    sqlx::query("DELETE FROM workflow_runs WHERE id = $1 AND repo_id = $2")
-        .bind(run_id)
-        .bind(repo.id)
-        .execute(&state.db)
-        .await
-        .map_err(AppError::Database)?;
+    let repo = fetch_repo_with_auth(&state.db, &owner, &repo_name, auth_user.user_id).await?;
+    delete_entity_by_repo(&state.db, "workflow_runs", run_id, repo.id).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -531,23 +500,8 @@ pub async fn list_jobs(
     State(state):   State<AppState>,
     Path((owner, repo_name, run_id)): Path<(String, String, Uuid)>,
 ) -> Result<impl IntoResponse, AppError> {
-    let owner = users::find_by_username(&state.db, &owner)
-        .await?
-        .ok_or(AppError::NotFound("User".into()))?;
-
-    let repo = repos::find_by_owner_and_name(&state.db, owner.id, &repo_name)
-        .await?
-        .ok_or(AppError::NotFound("Repository".into()))?;
-
-    let run: WorkflowRun = sqlx::query_as(
-        "SELECT * FROM workflow_runs WHERE id = $1 AND repo_id = $2"
-    )
-        .bind(run_id)
-        .bind(repo.id)
-        .fetch_optional(&state.db)
-        .await
-        .map_err(AppError::Database)?
-        .ok_or(AppError::NotFound("Workflow run".into()))?;
+    let (_, repo) = fetch_repo(&state.db, &owner, &repo_name).await?;
+    let run = fetch_run_by_repo(&state.db, run_id, repo.id).await?;
 
     let jobs: Vec<WorkflowJob> = sqlx::query_as(
         "SELECT * FROM workflow_jobs WHERE run_id = $1 ORDER BY created_at ASC"
@@ -564,13 +518,7 @@ pub async fn get_job(
     State(state):   State<AppState>,
     Path((owner, repo_name, job_id)): Path<(String, String, Uuid)>,
 ) -> Result<impl IntoResponse, AppError> {
-    let owner = users::find_by_username(&state.db, &owner)
-        .await?
-        .ok_or(AppError::NotFound("User".into()))?;
-
-    repos::find_by_owner_and_name(&state.db, owner.id, &repo_name)
-        .await?
-        .ok_or(AppError::NotFound("Repository".into()))?;
+    let (_, _) = fetch_repo(&state.db, &owner, &repo_name).await?;
 
     let job: WorkflowJob = sqlx::query_as(
         "SELECT * FROM workflow_jobs WHERE id = $1"
@@ -613,7 +561,7 @@ pub async fn update_job(
             conclusion   = $2::workflow_conclusion,
             started_at   = COALESCE($3, started_at),
             completed_at = $4,
-            updated_at   = now() -- note: workflow_jobs has no updated_at, using created_at
+            updated_at   = now()
          WHERE id = $5
          RETURNING *"
     )
@@ -733,13 +681,7 @@ pub async fn list_artifacts(
     State(state):   State<AppState>,
     Path((owner, repo_name, run_id)): Path<(String, String, Uuid)>,
 ) -> Result<impl IntoResponse, AppError> {
-    let owner = users::find_by_username(&state.db, &owner)
-        .await?
-        .ok_or(AppError::NotFound("User".into()))?;
-
-    let repo = repos::find_by_owner_and_name(&state.db, owner.id, &repo_name)
-        .await?
-        .ok_or(AppError::NotFound("Repository".into()))?;
+    let (_, repo) = fetch_repo(&state.db, &owner, &repo_name).await?;
 
     let artifacts: Vec<Artifact> = sqlx::query_as(
         "SELECT * FROM artifacts WHERE run_id = $1 AND repo_id = $2
@@ -759,13 +701,7 @@ pub async fn upload_artifact(
     Path((owner, repo_name, run_id)): Path<(String, String, Uuid)>,
     mut multipart:  Multipart,
 ) -> Result<impl IntoResponse, AppError> {
-    let owner = users::find_by_username(&state.db, &owner)
-        .await?
-        .ok_or(AppError::NotFound("User".into()))?;
-
-    let repo = repos::find_by_owner_and_name(&state.db, owner.id, &repo_name)
-        .await?
-        .ok_or(AppError::NotFound("Repository".into()))?;
+    let (_, repo) = fetch_repo(&state.db, &owner, &repo_name).await?;
 
     let field = multipart
         .next_field()
@@ -780,20 +716,7 @@ pub async fn upload_artifact(
     let size_bytes   = data.len() as i64;
     let storage_key  = format!("artifacts/{}/{}/{}", repo.id, run_id, name);
 
-    // upload to MinIO
-    let creds = aws_sdk_s3::config::Credentials::new(
-        &state.config.minio_access_key,
-        &state.config.minio_secret_key,
-        None, None, "opengit",
-    );
-    let s3_config = aws_sdk_s3::config::Builder::new()
-        .endpoint_url(&state.config.minio_endpoint)
-        .credentials_provider(creds)
-        .region(aws_sdk_s3::config::Region::new("us-east-1"))
-        .force_path_style(true)
-        .behavior_version(aws_sdk_s3::config::BehaviorVersion::latest())
-        .build();
-    let s3 = aws_sdk_s3::Client::from_conf(s3_config);
+    let s3 = get_s3_client(&state);
 
     let _ = s3.create_bucket().bucket(CI_BUCKET).send().await;
 
@@ -827,37 +750,10 @@ pub async fn download_artifact(
     State(state):   State<AppState>,
     Path((owner, repo_name, artifact_id)): Path<(String, String, Uuid)>,
 ) -> Result<impl IntoResponse, AppError> {
-    let owner = users::find_by_username(&state.db, &owner)
-        .await?
-        .ok_or(AppError::NotFound("User".into()))?;
+    let (_, repo) = fetch_repo(&state.db, &owner, &repo_name).await?;
+    let artifact = fetch_artifact_by_repo(&state.db, artifact_id, repo.id).await?;
 
-    let repo = repos::find_by_owner_and_name(&state.db, owner.id, &repo_name)
-        .await?
-        .ok_or(AppError::NotFound("Repository".into()))?;
-
-    let artifact: Artifact = sqlx::query_as(
-        "SELECT * FROM artifacts WHERE id = $1 AND repo_id = $2"
-    )
-        .bind(artifact_id)
-        .bind(repo.id)
-        .fetch_optional(&state.db)
-        .await
-        .map_err(AppError::Database)?
-        .ok_or(AppError::NotFound("Artifact".into()))?;
-
-    let creds = aws_sdk_s3::config::Credentials::new(
-        &state.config.minio_access_key,
-        &state.config.minio_secret_key,
-        None, None, "opengit",
-    );
-    let s3_config = aws_sdk_s3::config::Builder::new()
-        .endpoint_url(&state.config.minio_endpoint)
-        .credentials_provider(creds)
-        .region(aws_sdk_s3::config::Region::new("us-east-1"))
-        .force_path_style(true)
-        .behavior_version(aws_sdk_s3::config::BehaviorVersion::latest())
-        .build();
-    let s3 = aws_sdk_s3::Client::from_conf(s3_config);
+    let s3 = get_s3_client(&state);
 
     let presigned = s3
         .get_object()
@@ -883,24 +779,8 @@ pub async fn delete_artifact(
     auth_user:      AuthUser,
     Path((owner, repo_name, artifact_id)): Path<(String, String, Uuid)>,
 ) -> Result<impl IntoResponse, AppError> {
-    let owner = users::find_by_username(&state.db, &owner)
-        .await?
-        .ok_or(AppError::NotFound("User".into()))?;
-
-    if owner.id != auth_user.user_id {
-        return Err(AppError::Forbidden);
-    }
-
-    let repo = repos::find_by_owner_and_name(&state.db, owner.id, &repo_name)
-        .await?
-        .ok_or(AppError::NotFound("Repository".into()))?;
-
-    sqlx::query("DELETE FROM artifacts WHERE id = $1 AND repo_id = $2")
-        .bind(artifact_id)
-        .bind(repo.id)
-        .execute(&state.db)
-        .await
-        .map_err(AppError::Database)?;
+    let repo = fetch_repo_with_auth(&state.db, &owner, &repo_name, auth_user.user_id).await?;
+    delete_entity_by_repo(&state.db, "artifacts", artifact_id, repo.id).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -951,8 +831,7 @@ pub async fn list_runners(
     auth_user:      AuthUser,
     Query(pagination): Query<PaginationQuery>,
 ) -> Result<impl IntoResponse, AppError> {
-    let per_page = pagination.per_page.unwrap_or(30).min(100);
-    let offset   = (pagination.page.unwrap_or(1) - 1) * per_page;
+    let (per_page, offset) = get_limit_and_offset(pagination.page, pagination.per_page, 30);
 
     let runners: Vec<Runner> = sqlx::query_as(
         "SELECT * FROM runners ORDER BY created_at DESC LIMIT $1 OFFSET $2"
