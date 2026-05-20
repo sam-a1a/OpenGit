@@ -82,6 +82,12 @@ use crate::{
         two_factor::{
             disable_2fa, enable_2fa, get_2fa_status, regenerate_backup_codes,
             setup_2fa, verify_2fa_login,
+        },
+        oauth::{
+            approve, authorize, create_app, delete_app, get_app,
+            list_apps, list_authorizations, reset_client_secret,
+            revoke_authorization, revoke_token, token_exchange, update_app,
+            userinfo,
         }
     },
     state::AppState,
@@ -302,6 +308,25 @@ pub fn build(state: AppState) -> Router {
         .route("/api/v1/user/2fa",                      delete(disable_2fa))
         .route("/api/v1/user/2fa/backup-codes",         post(regenerate_backup_codes))
         .route("/api/v1/auth/2fa/verify",               post(verify_2fa_login))
+
+        // oauth apps
+        .route("/api/v1/applications",                      get(list_apps))
+        .route("/api/v1/applications",                      post(create_app))
+        .route("/api/v1/applications/{client_id}",          get(get_app))
+        .route("/api/v1/applications/{client_id}",          patch(update_app))
+        .route("/api/v1/applications/{client_id}",          delete(delete_app))
+        .route("/api/v1/applications/{client_id}/secret",   post(reset_client_secret))
+
+        // oauth flow
+        .route("/oauth/authorize",                          get(authorize))
+        .route("/oauth/authorize",                          post(approve))
+        .route("/oauth/token",                              post(token_exchange))
+        .route("/oauth/revoke",                             post(revoke_token))
+        .route("/oauth/userinfo",                           get(userinfo))
+
+        // user authorizations
+        .route("/api/v1/user/authorizations",               get(list_authorizations))
+        .route("/api/v1/user/authorizations/{client_id}",   delete(revoke_authorization))
 
         // git browser
         .route("/api/v1/repos/{owner}/{repo}/git/refs",                 get(list_refs))

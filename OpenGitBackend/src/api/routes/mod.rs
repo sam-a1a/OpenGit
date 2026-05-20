@@ -6,6 +6,7 @@ pub mod git_http;
 pub mod health;
 pub mod issues;
 pub mod notifications;
+pub mod oauth;
 pub mod organizations;
 pub mod pull_requests;
 pub mod releases;
