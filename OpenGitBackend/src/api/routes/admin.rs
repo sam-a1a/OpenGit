@@ -41,9 +41,9 @@ pub struct UserSearchQuery {
     pub per_page: Option<i64>,
 }
 
-// Admin guard
+// Private deduplication helper functions
 
-async fn require_admin(state: &AppState, user_id: Uuid) -> Result<(), AppError> {
+async fn get_user_role(state: &AppState, user_id: Uuid) -> Result<String, AppError> {
     let row: (String,) = sqlx::query_as(
         "SELECT role::text FROM users WHERE id = $1"
     )
@@ -53,23 +53,50 @@ async fn require_admin(state: &AppState, user_id: Uuid) -> Result<(), AppError> 
         .map_err(AppError::Database)?
         .ok_or(AppError::Unauthorized)?;
 
-    if row.0 != "admin" && row.0 != "superadmin" {
+    Ok(row.0)
+}
+
+fn get_limit_and_offset(page: Option<i64>, per_page: Option<i64>, default_per_page: i64) -> (i64, i64) {
+    let limit = per_page.unwrap_or(default_per_page).min(100);
+    let offset = (page.unwrap_or(1) - 1) * limit;
+    (limit, offset)
+}
+
+async fn fetch_user_by_username(db: &sqlx::PgPool, username: &str) -> Result<User, AppError> {
+    sqlx::query_as("SELECT * FROM users WHERE username = $1")
+        .bind(username)
+        .fetch_optional(db)
+        .await
+        .map_err(AppError::Database)?
+        .ok_or_else(|| AppError::NotFound("User".into()))
+}
+
+async fn update_user_status(db: &sqlx::PgPool, username: &str, is_active: bool) -> Result<User, AppError> {
+    sqlx::query_as(
+        "UPDATE users SET is_active = $1, updated_at = now()
+         WHERE username = $2 RETURNING *"
+    )
+        .bind(is_active)
+        .bind(username)
+        .fetch_optional(db)
+        .await
+        .map_err(AppError::Database)?
+        .ok_or_else(|| AppError::NotFound("User".into()))
+}
+
+// Admin guard
+
+async fn require_admin(state: &AppState, user_id: Uuid) -> Result<(), AppError> {
+    let role = get_user_role(state, user_id).await?;
+    if role != "admin" && role != "superadmin" {
         return Err(AppError::Forbidden);
     }
     Ok(())
 }
 
 async fn require_superadmin(state: &AppState, user_id: Uuid) -> Result<(), AppError> {
-    let row: (String,) = sqlx::query_as(
-        "SELECT role::text FROM users WHERE id = $1"
-    )
-        .bind(user_id)
-        .fetch_optional(&state.db)
-        .await
-        .map_err(AppError::Database)?
-        .ok_or(AppError::Unauthorized)?;
-
-    if row.0 != "superadmin" {
+    let role = get_user_role(state, user_id).await?;
+    if role != "superadmin" {
         return Err(AppError::Forbidden);
     }
     Ok(())
@@ -164,8 +191,7 @@ pub async fn list_audit_log(
 ) -> Result<impl IntoResponse, AppError> {
     require_admin(&state, auth_user.user_id).await?;
 
-    let per_page = params.per_page.unwrap_or(50).min(100);
-    let offset   = (params.page.unwrap_or(1) - 1) * per_page;
+    let (per_page, offset) = get_limit_and_offset(params.page, params.per_page, 50);
 
     let logs: Vec<AuditLog> = if let Some(ref action) = params.action {
         sqlx::query_as(
@@ -234,8 +260,7 @@ pub async fn list_users(
 ) -> Result<impl IntoResponse, AppError> {
     require_admin(&state, auth_user.user_id).await?;
 
-    let per_page = params.per_page.unwrap_or(30).min(100);
-    let offset   = (params.page.unwrap_or(1) - 1) * per_page;
+    let (per_page, offset) = get_limit_and_offset(params.page, params.per_page, 30);
 
     let users: Vec<User> = if let Some(ref q) = params.q {
         let pattern = format!("%{}%", q.to_lowercase());
@@ -285,14 +310,7 @@ pub async fn get_user_admin(
 ) -> Result<impl IntoResponse, AppError> {
     require_admin(&state, auth_user.user_id).await?;
 
-    let user: User = sqlx::query_as(
-        "SELECT * FROM users WHERE username = $1"
-    )
-        .bind(&username)
-        .fetch_optional(&state.db)
-        .await
-        .map_err(AppError::Database)?
-        .ok_or(AppError::NotFound("User".into()))?;
+    let user = fetch_user_by_username(&state.db, &username).await?;
 
     let repo_count: (i64,) = sqlx::query_as(
         "SELECT COUNT(*) FROM repositories WHERE owner_id = $1"
@@ -377,15 +395,7 @@ pub async fn suspend_user(
 ) -> Result<impl IntoResponse, AppError> {
     require_admin(&state, auth_user.user_id).await?;
 
-    let user: User = sqlx::query_as(
-        "UPDATE users SET is_active = false, updated_at = now()
-         WHERE username = $1 RETURNING *"
-    )
-        .bind(&username)
-        .fetch_optional(&state.db)
-        .await
-        .map_err(AppError::Database)?
-        .ok_or(AppError::NotFound("User".into()))?;
+    let user = update_user_status(&state.db, &username, false).await?;
 
     write_audit_log(
         &state,
@@ -406,15 +416,7 @@ pub async fn unsuspend_user(
 ) -> Result<impl IntoResponse, AppError> {
     require_admin(&state, auth_user.user_id).await?;
 
-    let user: User = sqlx::query_as(
-        "UPDATE users SET is_active = true, updated_at = now()
-         WHERE username = $1 RETURNING *"
-    )
-        .bind(&username)
-        .fetch_optional(&state.db)
-        .await
-        .map_err(AppError::Database)?
-        .ok_or(AppError::NotFound("User".into()))?;
+    let user = update_user_status(&state.db, &username, true).await?;
 
     Ok(Json(json!({ "message": "User unsuspended", "user": user })))
 }
@@ -426,14 +428,7 @@ pub async fn delete_user_admin(
 ) -> Result<impl IntoResponse, AppError> {
     require_superadmin(&state, auth_user.user_id).await?;
 
-    let user: User = sqlx::query_as(
-        "SELECT * FROM users WHERE username = $1"
-    )
-        .bind(&username)
-        .fetch_optional(&state.db)
-        .await
-        .map_err(AppError::Database)?
-        .ok_or(AppError::NotFound("User".into()))?;
+    let user = fetch_user_by_username(&state.db, &username).await?;
 
     // cannot delete yourself
     if user.id == auth_user.user_id {
@@ -476,8 +471,7 @@ pub async fn list_bans(
 ) -> Result<impl IntoResponse, AppError> {
     require_admin(&state, auth_user.user_id).await?;
 
-    let per_page = pagination.per_page.unwrap_or(30).min(100);
-    let offset   = (pagination.page.unwrap_or(1) - 1) * per_page;
+    let (per_page, offset) = get_limit_and_offset(pagination.page, pagination.per_page, 30);
 
     let bans: Vec<BannedUser> = sqlx::query_as(
         "SELECT * FROM banned_users
@@ -586,8 +580,7 @@ pub async fn list_abuse_reports(
 ) -> Result<impl IntoResponse, AppError> {
     require_admin(&state, auth_user.user_id).await?;
 
-    let per_page = pagination.per_page.unwrap_or(30).min(100);
-    let offset   = (pagination.page.unwrap_or(1) - 1) * per_page;
+    let (per_page, offset) = get_limit_and_offset(pagination.page, pagination.per_page, 30);
 
     let reports: Vec<AbuseReport> = sqlx::query_as(
         "SELECT * FROM abuse_reports
@@ -784,8 +777,7 @@ pub async fn list_repos_admin(
 ) -> Result<impl IntoResponse, AppError> {
     require_admin(&state, auth_user.user_id).await?;
 
-    let per_page = params.per_page.unwrap_or(30).min(100);
-    let offset   = (params.page.unwrap_or(1) - 1) * per_page;
+    let (per_page, offset) = get_limit_and_offset(params.page, params.per_page, 30);
 
     let repos: Vec<crate::models::repo::Repository> = sqlx::query_as(
         "SELECT * FROM repositories
