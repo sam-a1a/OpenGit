@@ -1,14 +1,15 @@
 import { cn } from "../../lib/utils";
-import { AlertCircle, CheckCircle, Info, XCircle } from "lucide-react";
+import { AlertCircle, CheckCircle, Info, X, XCircle } from "lucide-react";
 
 interface AlertProps {
     type?:     "info" | "success" | "warning" | "error";
     title?:    string;
     children:  React.ReactNode;
     className?: string;
+    onClose?:  () => void;
 }
 
-export function Alert({ type = "info", title, children, className }: AlertProps) {
+export function Alert({ type = "info", title, children, className, onClose }: AlertProps) {
     const styles = {
         info:    { wrap: "bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800",    icon: <Info className="w-5 h-5 text-blue-500" />,    text: "text-blue-800 dark:text-blue-300" },
         success: { wrap: "bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800", icon: <CheckCircle className="w-5 h-5 text-green-500" />, text: "text-green-800 dark:text-green-300" },
@@ -21,10 +22,15 @@ export function Alert({ type = "info", title, children, className }: AlertProps)
     return (
         <div className={cn("flex gap-3 p-4 rounded-lg border", s.wrap, className)}>
             <div className="flex-shrink-0 mt-0.5">{s.icon}</div>
-            <div className={cn("text-sm", s.text)}>
+            <div className={cn("text-sm flex-1", s.text)}>
                 {title && <p className="font-semibold mb-1">{title}</p>}
                 {children}
             </div>
+            {onClose && (
+                <button onClick={onClose} className="flex-shrink-0 opacity-60 hover:opacity-100">
+                    <X className="w-4 h-4" />
+                </button>
+            )}
         </div>
     );
 }
