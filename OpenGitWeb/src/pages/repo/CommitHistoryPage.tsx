@@ -7,7 +7,7 @@ import { Button } from "../../components/ui/Button";
 import { PageSpinner } from "../../components/ui/Spinner";
 import { Avatar } from "../../components/ui/Avatar";
 import { reposApi } from "../../api/repos";
-import { relativeTime, formatDateTime } from "../../lib/utils";
+import { relativeTime } from "../../lib/utils";
 
 export default function CommitHistoryPage() {
     const { owner, repo: repoName, "*": ref } = useParams<{

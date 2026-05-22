@@ -2,10 +2,10 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 interface UiStore {
-    theme:     "light" | "dark";
-    sidebarOpen: boolean;
-    toggleTheme: () => void;
-    setTheme:    (t: "light" | "dark") => void;
+    theme:         "light" | "dark";
+    sidebarOpen:   boolean;
+    toggleTheme:   () => void;
+    setTheme:      (t: "light" | "dark") => void;
     toggleSidebar: () => void;
 }
 
@@ -27,7 +27,8 @@ export const useUiStore = create<UiStore>()(
                 set({ theme });
             },
 
-            toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
+            toggleSidebar: () =>
+                set((s) => ({ sidebarOpen: !s.sidebarOpen })),
         }),
         { name: "opengit-ui" }
     )

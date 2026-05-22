@@ -1,10 +1,9 @@
 import { useSearchParams, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Search, BookOpen, CircleDot, GitPullRequest, User, MessageSquare } from "lucide-react";
+import { Search, BookOpen, CircleDot, GitPullRequest, User } from "lucide-react";
 import { PageLayout } from "../../components/layout/PageLayout";
 import { Badge } from "../../components/ui/Badge";
 import { PageSpinner } from "../../components/ui/Spinner";
-import { Tabs } from "../../components/ui/Tabs";
 import { searchApi } from "../../api/search";
 import { relativeTime, cn } from "../../lib/utils";
 import { useState } from "react";

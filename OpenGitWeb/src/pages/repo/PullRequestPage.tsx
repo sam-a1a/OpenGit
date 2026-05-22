@@ -3,23 +3,19 @@ import { useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
     GitPullRequest, GitMerge, XCircle, MessageSquare,
-    GitCommit, FileDiff, CheckCircle2, Clock, ChevronDown
+    GitCommit, FileDiff, CheckCircle2, ChevronDown
 } from "lucide-react";
 import { Header } from "../../components/layout/Header";
-import { Avatar } from "../../components/ui/Avatar";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { Alert } from "../../components/ui/Alert";
 import { PageSpinner } from "../../components/ui/Spinner";
 import { Tabs } from "../../components/ui/Tabs";
 import { apiClient } from "../../api/client";
-import { usersApi } from "../../api/users";
 import { useAuthStore } from "../../stores/auth";
 import { relativeTime, cn } from "../../lib/utils";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { oneDark, oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { useUiStore } from "../../stores/ui";
 
 export default function PullRequestPage() {
