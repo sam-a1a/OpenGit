@@ -3,16 +3,21 @@ import { useAuthStore } from "./stores/auth";
 import { useUiStore } from "./stores/ui";
 import { useEffect } from "react";
 
+import LandingPage         from "./pages/LandingPage";
 import LoginPage           from "./pages/auth/LoginPage";
 import RegisterPage        from "./pages/auth/RegisterPage";
 import ExplorePage         from "./pages/explore/ExplorePage";
 import ProfilePage         from "./pages/user/ProfilePage";
 import RepoLayout          from "./pages/repo/RepoLayout";
 import IssuePage           from "./pages/repo/IssuePage";
+import PullRequestPage     from "./pages/repo/PullRequestPage";
 import FileViewerPage      from "./pages/repo/FileViewerPage";
+import CommitHistoryPage   from "./pages/repo/CommitHistoryPage";
 import SettingsPage        from "./pages/settings/SettingsPage";
 import NotificationsPage   from "./pages/notifications/NotificationsPage";
 import NewRepoPage         from "./pages/repo/NewRepoPage";
+import SearchPage          from "./pages/search/SearchPage";
+import OrgPage             from "./pages/org/OrgPage";
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
     const token = useAuthStore((s) => s.access_token);
@@ -28,10 +33,16 @@ export default function App() {
 
     return (
         <Routes>
-            {/* public */}
+            {/* landing */}
+            <Route path="/" element={<LandingPage />} />
+
+            {/* auth */}
             <Route path="/login"    element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
-            <Route path="/explore"  element={<ExplorePage />} />
+
+            {/* public */}
+            <Route path="/explore" element={<ExplorePage />} />
+            <Route path="/search"  element={<SearchPage />} />
 
             {/* protected */}
             <Route path="/new" element={
@@ -44,26 +55,24 @@ export default function App() {
                 <PrivateRoute><SettingsPage /></PrivateRoute>
             } />
 
-            {/* repo — issue detail */}
+            {/* org */}
+            <Route path="/orgs/:org/*" element={<OrgPage />} />
+
+            {/* repo — specific pages first */}
             <Route path="/:owner/:repo/issues/:number"
                    element={<IssuePage />} />
-
-            {/* repo — file viewer */}
+            <Route path="/:owner/:repo/pulls/:number"
+                   element={<PullRequestPage />} />
             <Route path="/:owner/:repo/blob/:ref/*"
                    element={<FileViewerPage />} />
+            <Route path="/:owner/:repo/commits/*"
+                   element={<CommitHistoryPage />} />
 
-            {/* repo — all other tabs */}
+            {/* repo — layout with tabs */}
             <Route path="/:owner/:repo/*" element={<RepoLayout />} />
 
-            {/* user profile */}
+            {/* user profile — last, catches /:username */}
             <Route path="/:username" element={<ProfilePage />} />
-
-            {/* default */}
-            <Route path="/" element={
-                <PrivateRoute>
-                    <Navigate to="/explore" replace />
-                </PrivateRoute>
-            } />
 
             <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
