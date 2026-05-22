@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import { useAuthStore } from "./stores/auth";
 import { useUiStore } from "./stores/ui";
 import { useEffect } from "react";
+import AdminPage from "./pages/admin/AdminPage";
 
 import LandingPage         from "./pages/LandingPage";
 import LoginPage           from "./pages/auth/LoginPage";
@@ -70,6 +71,10 @@ export default function App() {
 
             {/* repo — layout with tabs */}
             <Route path="/:owner/:repo/*" element={<RepoLayout />} />
+
+            <Route path="/admin/*" element={
+                <PrivateRoute><AdminPage /></PrivateRoute>
+            } />
 
             {/* user profile — last, catches /:username */}
             <Route path="/:username" element={<ProfilePage />} />

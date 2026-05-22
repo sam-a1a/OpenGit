@@ -1,6 +1,6 @@
 import { useParams, NavLink, Routes, Route } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Building, Users, BookOpen, Settings } from "lucide-react";
+import { Users, BookOpen } from "lucide-react";
 import { Header } from "../../components/layout/Header";
 import { Avatar } from "../../components/ui/Avatar";
 import { Badge } from "../../components/ui/Badge";
